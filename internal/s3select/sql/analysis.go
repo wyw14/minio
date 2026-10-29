@@ -227,6 +227,9 @@ func (e *FuncExpr) analyze(s *Select) (result qProp) {
 	case sqlFnCast:
 		return e.Cast.Expr.analyze(s)
 
+	case sqlFnTryCast:
+		return e.TryCast.Expr.analyze(s)
+
 	case sqlFnExtract:
 		return e.Extract.From.analyze(s)
 

@@ -35,7 +35,8 @@ const (
 	sqlFnNullIf   FuncName = "NULLIF"
 
 	// Conversion
-	sqlFnCast FuncName = "CAST"
+	sqlFnCast    FuncName = "CAST"
+	sqlFnTryCast FuncName = "TRY_CAST"
 
 	// Date and time
 	sqlFnDateAdd     FuncName = "DATE_ADD"
@@ -68,6 +69,8 @@ func (e *FuncExpr) getFunctionName() FuncName {
 		return aggFnCount
 	case e.Cast != nil:
 		return sqlFnCast
+	case e.TryCast != nil:
+		return sqlFnTryCast
 	case e.Substring != nil:
 		return sqlFnSubstring
 	case e.Extract != nil:
@@ -91,6 +94,11 @@ func (e *FuncExpr) evalSQLFnNode(r Record, tableAlias string) (res *Value, err e
 	case sqlFnCast:
 		expr := e.Cast.Expr
 		res, err = expr.castTo(r, strings.ToUpper(e.Cast.CastType), tableAlias)
+		return res, err
+
+	case sqlFnTryCast:
+		expr := e.TryCast.Expr
+		res, err = expr.tryCastTo(r, strings.ToUpper(e.TryCast.CastType), tableAlias)
 		return res, err
 
 	case sqlFnSubstring:
@@ -412,6 +420,13 @@ func (e *Expression) castTo(r Record, castType string, tableAlias string) (res *
 		return nil, err
 	}
 
+	return castValue(v, castType)
+}
+
+// castValue converts v to castType using the conversion rules shared
+// by CAST and TRY_CAST. It returns an error when the value cannot be
+// converted to the requested type.
+func castValue(v *Value, castType string) (res *Value, err error) {
 	switch castType {
 	case castInt, castInteger:
 		i, err := intCast(v)
@@ -439,6 +454,44 @@ func (e *Expression) castTo(r Record, castType string, tableAlias string) (res *
 	default:
 		return nil, errUnimplementedCast
 	}
+}
+
+// tryCastTo evaluates the input expression and converts its result to
+// castType, following the same conversion rules as castTo. The
+// difference from CAST is that a NULL/MISSING input or a value that
+// cannot be converted yields SQL NULL instead of an error, so query
+// processing can continue with the remaining records.
+//
+// Errors raised while evaluating the input expression itself, and
+// unsupported target types, are still returned as errors.
+func (e *Expression) tryCastTo(r Record, castType string, tableAlias string) (res *Value, err error) {
+	// The target type is validated up-front: an unsupported target
+	// type must never be silently turned into NULL.
+	switch castType {
+	case castBool, castInt, castInteger, castString, castFloat, castTimestamp:
+	default:
+		return nil, errUnimplementedCast
+	}
+
+	v, err := e.evalNode(r, tableAlias)
+	if err != nil {
+		// Errors from the input expression (e.g. division by zero)
+		// are not value conversion failures and must propagate.
+		return nil, err
+	}
+
+	// NULL or missing input converts to NULL for every target type.
+	if v.IsNull() || v.IsMissing() {
+		return FromNull(), nil
+	}
+
+	res, err = castValue(v, castType)
+	if err != nil {
+		// The value is present but cannot be converted to the
+		// requested target type.
+		return FromNull(), nil
+	}
+	return res, nil
 }
 
 func intCast(v *Value) (int64, error) {

@@ -271,6 +271,7 @@ type FuncExpr struct {
 	SFunc     *SimpleArgFunc `parser:"  @@"`
 	Count     *CountFunc     `parser:"| @@"`
 	Cast      *CastFunc      `parser:"| @@"`
+	TryCast   *TryCastFunc   `parser:"| @@"`
 	Substring *SubstringFunc `parser:"| @@"`
 	Extract   *ExtractFunc   `parser:"| @@"`
 	Trim      *TrimFunc      `parser:"| @@"`
@@ -299,6 +300,14 @@ type CountFunc struct {
 type CastFunc struct {
 	Expr     *Expression `parser:" \"CAST\" \"(\" @@ "`
 	CastType string      `parser:" \"AS\" @(\"BOOL\" | \"INT\" | \"INTEGER\" | \"STRING\" | \"FLOAT\" | \"DECIMAL\" | \"NUMERIC\" | \"TIMESTAMP\") \")\" "`
+}
+
+// TryCastFunc represents TRY_CAST sql function. Unlike CAST it only
+// supports target types whose conversion is implemented; values that
+// cannot be converted yield SQL NULL at evaluation time.
+type TryCastFunc struct {
+	Expr     *Expression `parser:" \"TRY_CAST\" \"(\" @@ "`
+	CastType string      `parser:" \"AS\" @(\"BOOL\" | \"INT\" | \"INTEGER\" | \"STRING\" | \"FLOAT\" | \"TIMESTAMP\") \")\" "`
 }
 
 // SubstringFunc represents SUBSTRING sql function
@@ -356,7 +365,7 @@ type Identifier struct {
 var (
 	sqlLexer = lexer.Must(lexer.Regexp(`(\s+)` +
 		`|(?P<Timeword>(?i)\b(?:YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE)\b)` +
-		`|(?P<Keyword>(?i)\b(?:SELECT|FROM|TOP|DISTINCT|ALL|WHERE|GROUP|BY|HAVING|UNION|MINUS|EXCEPT|INTERSECT|ORDER|LIMIT|OFFSET|TRUE|FALSE|NULL|IS|NOT|ANY|SOME|BETWEEN|AND|OR|LIKE|ESCAPE|AS|IN|BOOL|INT|INTEGER|STRING|FLOAT|DECIMAL|NUMERIC|TIMESTAMP|AVG|COUNT|MAX|MIN|SUM|COALESCE|NULLIF|CAST|DATE_ADD|DATE_DIFF|EXTRACT|TO_STRING|TO_TIMESTAMP|UTCNOW|CHAR_LENGTH|CHARACTER_LENGTH|LOWER|SUBSTRING|TRIM|UPPER|LEADING|TRAILING|BOTH|FOR|MISSING)\b)` +
+		`|(?P<Keyword>(?i)\b(?:SELECT|FROM|TOP|DISTINCT|ALL|WHERE|GROUP|BY|HAVING|UNION|MINUS|EXCEPT|INTERSECT|ORDER|LIMIT|OFFSET|TRUE|FALSE|NULL|IS|NOT|ANY|SOME|BETWEEN|AND|OR|LIKE|ESCAPE|AS|IN|BOOL|INT|INTEGER|STRING|FLOAT|DECIMAL|NUMERIC|TIMESTAMP|AVG|COUNT|MAX|MIN|SUM|COALESCE|NULLIF|CAST|TRY_CAST|DATE_ADD|DATE_DIFF|EXTRACT|TO_STRING|TO_TIMESTAMP|UTCNOW|CHAR_LENGTH|CHARACTER_LENGTH|LOWER|SUBSTRING|TRIM|UPPER|LEADING|TRAILING|BOTH|FOR|MISSING)\b)` +
 		`|(?P<Ident>[a-zA-Z_][a-zA-Z0-9_]*)` +
 		`|(?P<QuotIdent>"([^"]*("")?)*")` +
 		`|(?P<Float>\d*\.\d+([eE][-+]?\d+)?)` +
