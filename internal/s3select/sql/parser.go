@@ -276,6 +276,7 @@ type FuncExpr struct {
 	Trim      *TrimFunc      `parser:"| @@"`
 	DateAdd   *DateAddFunc   `parser:"| @@"`
 	DateDiff  *DateDiffFunc  `parser:"| @@"`
+	DateTrunc *DateTruncFunc `parser:"| @@"`
 
 	// Used during evaluation for aggregation funcs
 	aggregate *aggVal
@@ -337,6 +338,21 @@ type DateDiffFunc struct {
 	Timestamp2 *PrimaryTerm `parser:" @@ \")\" "`
 }
 
+// DateTruncFunc represents the DATE_TRUNC function
+type DateTruncFunc struct {
+	Unit      *DateTruncUnit `parser:" \"DATE_TRUNC\" \"(\" @@ \",\" "`
+	Timestamp *PrimaryTerm   `parser:" @@ \")\""`
+}
+
+// DateTruncUnit represents the unit argument of DATE_TRUNC. The unit
+// can be a bare time unit keyword (YEAR, MONTH, DAY, HOUR, MINUTE or
+// SECOND) or any string-valued expression, such as a string literal or
+// a column reference, so that the unit can vary per row.
+type DateTruncUnit struct {
+	Keyword string       `parser:"  @( \"YEAR\":Timeword | \"MONTH\":Timeword | \"DAY\":Timeword | \"HOUR\":Timeword | \"MINUTE\":Timeword | \"SECOND\":Timeword )"`
+	Expr    *PrimaryTerm `parser:"| @@"`
+}
+
 // LitValue represents a literal value parsed from the sql
 type LitValue struct {
 	Float   *float64       `parser:"(  @Float"`
@@ -356,7 +372,7 @@ type Identifier struct {
 var (
 	sqlLexer = lexer.Must(lexer.Regexp(`(\s+)` +
 		`|(?P<Timeword>(?i)\b(?:YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE)\b)` +
-		`|(?P<Keyword>(?i)\b(?:SELECT|FROM|TOP|DISTINCT|ALL|WHERE|GROUP|BY|HAVING|UNION|MINUS|EXCEPT|INTERSECT|ORDER|LIMIT|OFFSET|TRUE|FALSE|NULL|IS|NOT|ANY|SOME|BETWEEN|AND|OR|LIKE|ESCAPE|AS|IN|BOOL|INT|INTEGER|STRING|FLOAT|DECIMAL|NUMERIC|TIMESTAMP|AVG|COUNT|MAX|MIN|SUM|COALESCE|NULLIF|CAST|DATE_ADD|DATE_DIFF|EXTRACT|TO_STRING|TO_TIMESTAMP|UTCNOW|CHAR_LENGTH|CHARACTER_LENGTH|LOWER|SUBSTRING|TRIM|UPPER|LEADING|TRAILING|BOTH|FOR|MISSING)\b)` +
+		`|(?P<Keyword>(?i)\b(?:SELECT|FROM|TOP|DISTINCT|ALL|WHERE|GROUP|BY|HAVING|UNION|MINUS|EXCEPT|INTERSECT|ORDER|LIMIT|OFFSET|TRUE|FALSE|NULL|IS|NOT|ANY|SOME|BETWEEN|AND|OR|LIKE|ESCAPE|AS|IN|BOOL|INT|INTEGER|STRING|FLOAT|DECIMAL|NUMERIC|TIMESTAMP|AVG|COUNT|MAX|MIN|SUM|COALESCE|NULLIF|CAST|DATE_ADD|DATE_DIFF|DATE_TRUNC|EXTRACT|TO_STRING|TO_TIMESTAMP|UTCNOW|CHAR_LENGTH|CHARACTER_LENGTH|LOWER|SUBSTRING|TRIM|UPPER|LEADING|TRAILING|BOTH|FOR|MISSING)\b)` +
 		`|(?P<Ident>[a-zA-Z_][a-zA-Z0-9_]*)` +
 		`|(?P<QuotIdent>"([^"]*("")?)*")` +
 		`|(?P<Float>\d*\.\d+([eE][-+]?\d+)?)` +

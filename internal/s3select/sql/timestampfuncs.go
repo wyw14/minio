@@ -18,6 +18,7 @@
 package sql
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -177,4 +178,33 @@ func dateDiff(timePart string, ts1, ts2 time.Time) (*Value, error) {
 	default:
 	}
 	return nil, errNotImplemented
+}
+
+// dateTrunc truncates the timestamp down to the beginning of the
+// specified calendar unit. The calendar fields of the timestamp are
+// read in its own timezone offset - the value is never converted to
+// the server's local timezone - and the returned timestamp retains
+// that same offset.
+func dateTrunc(timePart string, t time.Time) (*Value, error) {
+	year, month, day := t.Date()
+	hour, minute, second := t.Clock()
+	loc := t.Location()
+
+	switch timePart {
+	case timePartYear:
+		t = time.Date(year, time.January, 1, 0, 0, 0, 0, loc)
+	case timePartMonth:
+		t = time.Date(year, month, 1, 0, 0, 0, 0, loc)
+	case timePartDay:
+		t = time.Date(year, month, day, 0, 0, 0, 0, loc)
+	case timePartHour:
+		t = time.Date(year, month, day, hour, 0, 0, 0, loc)
+	case timePartMinute:
+		t = time.Date(year, month, day, hour, minute, 0, 0, loc)
+	case timePartSecond:
+		t = time.Date(year, month, day, hour, minute, second, 0, loc)
+	default:
+		return nil, fmt.Errorf("%s: unsupported time unit %q: expected YEAR, MONTH, DAY, HOUR, MINUTE or SECOND", sqlFnDateTrunc, timePart)
+	}
+	return FromTimestamp(t), nil
 }

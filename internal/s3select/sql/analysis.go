@@ -240,6 +240,13 @@ func (e *FuncExpr) analyze(s *Select) (result qProp) {
 		result.combine(e.DateDiff.Timestamp2.analyze(s))
 		return result
 
+	case sqlFnDateTrunc:
+		if e.DateTrunc.Unit.Expr != nil {
+			result.combine(e.DateTrunc.Unit.Expr.analyze(s))
+		}
+		result.combine(e.DateTrunc.Timestamp.analyze(s))
+		return result
+
 	// Handle aggregation function calls
 	case aggFnAvg, aggFnMax, aggFnMin, aggFnSum, aggFnCount:
 		// Initialize accumulator

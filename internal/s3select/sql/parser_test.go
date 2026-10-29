@@ -192,6 +192,12 @@ func TestFunctionParsing(t *testing.T) {
 
 		"extract(hour from '2018-01-09')",
 		"extract(day from '2018-01-09')",
+
+		"date_trunc(day, '2018-01-09')",
+		"DATE_TRUNC(YEAR, CAST('2018-01-09T' AS TIMESTAMP))",
+		"DATE_TRUNC('DAY', s.ts)",
+		"date_trunc(unit, s.ts)",
+		"date_trunc('hour', t)",
 		"substring('abcd' from 2 for 2)",
 		"substring('abcd' from 2)",
 		"substring('abcd' , 2 , 2)",

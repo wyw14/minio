@@ -40,6 +40,7 @@ const (
 	// Date and time
 	sqlFnDateAdd     FuncName = "DATE_ADD"
 	sqlFnDateDiff    FuncName = "DATE_DIFF"
+	sqlFnDateTrunc   FuncName = "DATE_TRUNC"
 	sqlFnExtract     FuncName = "EXTRACT"
 	sqlFnToString    FuncName = "TO_STRING"
 	sqlFnToTimestamp FuncName = "TO_TIMESTAMP"
@@ -78,6 +79,8 @@ func (e *FuncExpr) getFunctionName() FuncName {
 		return sqlFnDateAdd
 	case e.DateDiff != nil:
 		return sqlFnDateDiff
+	case e.DateTrunc != nil:
+		return sqlFnDateTrunc
 	default:
 		return ""
 	}
@@ -107,6 +110,9 @@ func (e *FuncExpr) evalSQLFnNode(r Record, tableAlias string) (res *Value, err e
 
 	case sqlFnDateDiff:
 		return handleDateDiff(r, e.DateDiff, tableAlias)
+
+	case sqlFnDateTrunc:
+		return handleDateTrunc(r, e.DateTrunc, tableAlias)
 	}
 
 	// For all simple argument functions, we evaluate the arguments here
@@ -271,6 +277,56 @@ func handleDateDiff(r Record, d *DateDiffFunc, tableAlias string) (*Value, error
 	}
 
 	return dateDiff(strings.ToUpper(d.DatePart), ts1, ts2)
+}
+
+// evalNode returns the unit as a string Value, whether it was parsed
+// as a bare time unit keyword or a general expression.
+func (u *DateTruncUnit) evalNode(r Record, tableAlias string) (*Value, error) {
+	if u.Keyword != "" {
+		return FromString(u.Keyword), nil
+	}
+	return u.Expr.evalNode(r, tableAlias)
+}
+
+func handleDateTrunc(r Record, d *DateTruncFunc, tableAlias string) (*Value, error) {
+	unitVal, err := d.Unit.evalNode(r, tableAlias)
+	if err != nil {
+		return nil, err
+	}
+	// NULL or MISSING unit yields NULL.
+	if unitVal.IsNull() || unitVal.IsMissing() {
+		return FromNull(), nil
+	}
+	inferTypeAsString(unitVal)
+	unit, ok := unitVal.ToString()
+	if !ok {
+		err := fmt.Errorf("%s() expects a time unit string as the first argument", sqlFnDateTrunc)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	tsVal, err := d.Timestamp.evalNode(r, tableAlias)
+	if err != nil {
+		return nil, err
+	}
+	// NULL or MISSING timestamp yields NULL.
+	if tsVal.IsNull() || tsVal.IsMissing() {
+		return FromNull(), nil
+	}
+	if err = inferTypeAsTimestamp(tsVal); err != nil {
+		err := fmt.Errorf("%s() expects a timestamp argument: %w", sqlFnDateTrunc, err)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+	t, ok := tsVal.ToTimestamp()
+	if !ok {
+		err := fmt.Errorf("%s() expects a timestamp argument", sqlFnDateTrunc)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	res, err := dateTrunc(strings.ToUpper(strings.TrimSpace(unit)), t)
+	if err != nil {
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+	return res, nil
 }
 
 func handleUTCNow() (*Value, error) {
