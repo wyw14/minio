@@ -139,6 +139,23 @@ func (name Name) Expand() []Name {
 	}
 }
 
+// HasObjectSize - returns true if the event type carries a confirmable
+// object size in its notification payload. Object removal events and
+// bucket level events do not carry an object size.
+func (name Name) HasObjectSize() bool {
+	switch name {
+	case ObjectRemovedDelete,
+		ObjectRemovedDeleteMarkerCreated,
+		ObjectRemovedNoOP,
+		ObjectRemovedDeleteAllVersions,
+		ILMDelMarkerExpirationDelete,
+		BucketCreated,
+		BucketRemoved:
+		return false
+	}
+	return true
+}
+
 // Mask returns the type as mask.
 // Compound "All" types are expanded.
 func (name Name) Mask() uint64 {

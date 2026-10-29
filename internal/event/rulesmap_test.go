@@ -24,13 +24,13 @@ import (
 
 func TestRulesMapClone(t *testing.T) {
 	rulesMapCase1 := make(RulesMap)
-	rulesMapToAddCase1 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapToAddCase1 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
-	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
+	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
 
-	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
 	testCases := []struct {
 		rulesMap      RulesMap
@@ -61,13 +61,13 @@ func TestRulesMapAdd(t *testing.T) {
 	expectedResultCase1 := make(RulesMap)
 
 	rulesMapCase2 := make(RulesMap)
-	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
-	expectedResultCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	expectedResultCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
-	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	expectedResultCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	expectedResultCase3.add([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	expectedResultCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	expectedResultCase3.add([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
 	testCases := []struct {
 		rulesMap       RulesMap
@@ -93,14 +93,14 @@ func TestRulesMapRemove(t *testing.T) {
 	rulesMapToAddCase1 := make(RulesMap)
 	expectedResultCase1 := make(RulesMap)
 
-	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapToAddCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 	expectedResultCase2 := make(RulesMap)
 
-	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	rulesMapCase3.add([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	expectedResultCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	rulesMapCase3.add([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapToAddCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	expectedResultCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
 	testCases := []struct {
 		rulesMap       RulesMap
@@ -124,27 +124,53 @@ func TestRulesMapRemove(t *testing.T) {
 func TestRulesMapMatch(t *testing.T) {
 	rulesMapCase1 := make(RulesMap)
 
-	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
-	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
 
-	rulesMapCase4 := NewRulesMap([]Name{ObjectCreatedAll}, "2010*.jpg", TargetID{"1", "webhook"})
-	rulesMapCase4.add([]Name{ObjectCreatedAll}, "*", TargetID{"2", "amqp"})
+	rulesMapCase4 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
+	rulesMapCase4.add([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"2", "amqp"})
+
+	// A size filtered target and an unfiltered target registered for
+	// the same object created events.
+	rulesMapCase5 := NewRulesMap([]Name{ObjectCreatedAll}, Rule{Pattern: "*", MinObjectSize: 1024, MaxObjectSize: 2048, HasMinSize: true, HasMaxSize: true}, TargetID{"1", "webhook"})
+	rulesMapCase5.add([]Name{ObjectCreatedAll}, Rule{Pattern: "*"}, TargetID{"2", "amqp"})
+
+	// Same setup but registered for object removal events, where the
+	// object size is never confirmable.
+	rulesMapCase6 := NewRulesMap([]Name{ObjectRemovedAll}, Rule{Pattern: "*", MinObjectSize: 1024, MaxObjectSize: 2048, HasMinSize: true, HasMaxSize: true}, TargetID{"1", "webhook"})
+	rulesMapCase6.add([]Name{ObjectRemovedAll}, Rule{Pattern: "*"}, TargetID{"2", "amqp"})
 
 	testCases := []struct {
 		rulesMap       RulesMap
 		eventName      Name
 		objectName     string
+		objectSize     *int64
 		expectedResult TargetIDSet
 	}{
-		{rulesMapCase1, ObjectCreatedPut, "2010/photo.jpg", NewTargetIDSet()},
-		{rulesMapCase2, ObjectCreatedPut, "2010/photo.jpg", NewTargetIDSet(TargetID{"1", "webhook"})},
-		{rulesMapCase3, ObjectCreatedPut, "2000/photo.png", NewTargetIDSet()},
-		{rulesMapCase4, ObjectCreatedPut, "2000/photo.png", NewTargetIDSet(TargetID{"2", "amqp"})},
+		{rulesMapCase1, ObjectCreatedPut, "2010/photo.jpg", nil, NewTargetIDSet()},
+		{rulesMapCase2, ObjectCreatedPut, "2010/photo.jpg", nil, NewTargetIDSet(TargetID{"1", "webhook"})},
+		{rulesMapCase3, ObjectCreatedPut, "2000/photo.png", nil, NewTargetIDSet()},
+		{rulesMapCase4, ObjectCreatedPut, "2000/photo.png", nil, NewTargetIDSet(TargetID{"2", "amqp"})},
+
+		// Object size within the inclusive [1024, 2048] range: both match.
+		{rulesMapCase5, ObjectCreatedPut, "photo.jpg", int64p(1024), NewTargetIDSet(TargetID{"1", "webhook"}, TargetID{"2", "amqp"})},
+		{rulesMapCase5, ObjectCreatedPut, "photo.jpg", int64p(2048), NewTargetIDSet(TargetID{"1", "webhook"}, TargetID{"2", "amqp"})},
+		// Out of range: only the unfiltered target matches.
+		{rulesMapCase5, ObjectCreatedPut, "photo.jpg", int64p(1023), NewTargetIDSet(TargetID{"2", "amqp"})},
+		{rulesMapCase5, ObjectCreatedPut, "photo.jpg", int64p(2049), NewTargetIDSet(TargetID{"2", "amqp"})},
+		// A zero byte object is compared as zero bytes.
+		{rulesMapCase5, ObjectCreatedPut, "photo.jpg", int64p(0), NewTargetIDSet(TargetID{"2", "amqp"})},
+		// No confirmable object size, e.g. an object removal event: the
+		// size filtered target does not match, the unfiltered one does.
+		{rulesMapCase6, ObjectRemovedDelete, "photo.jpg", nil, NewTargetIDSet(TargetID{"2", "amqp"})},
+		{rulesMapCase6, ObjectRemovedDeleteMarkerCreated, "photo.jpg", nil, NewTargetIDSet(TargetID{"2", "amqp"})},
+		// No event type match: no targets.
+		{rulesMapCase5, ObjectRemovedDelete, "photo.jpg", int64p(1500), NewTargetIDSet()},
 	}
 
 	for i, testCase := range testCases {
-		result := testCase.rulesMap.Match(testCase.eventName, testCase.objectName)
+		result := testCase.rulesMap.Match(testCase.eventName, testCase.objectName, testCase.objectSize)
 
 		if !reflect.DeepEqual(result, testCase.expectedResult) {
 			t.Fatalf("test %v: result: expected: %v, got: %v", i+1, testCase.expectedResult, result)
@@ -155,30 +181,30 @@ func TestRulesMapMatch(t *testing.T) {
 func TestNewRulesMap(t *testing.T) {
 	rulesMapCase1 := make(RulesMap)
 	rulesMapCase1.add([]Name{ObjectAccessedGet, ObjectAccessedHead, ObjectAccessedGetRetention, ObjectAccessedGetLegalHold, ObjectAccessedAttributes},
-		"*", TargetID{"1", "webhook"})
+		Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
 	rulesMapCase2 := make(RulesMap)
 	rulesMapCase2.add([]Name{
 		ObjectAccessedGet, ObjectAccessedHead, ObjectAccessedAttributes,
 		ObjectCreatedPut, ObjectAccessedGetRetention, ObjectAccessedGetLegalHold,
-	}, "*", TargetID{"1", "webhook"})
+	}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
 	rulesMapCase3 := make(RulesMap)
-	rulesMapCase3.add([]Name{ObjectRemovedDelete}, "2010*.jpg", TargetID{"1", "webhook"})
+	rulesMapCase3.add([]Name{ObjectRemovedDelete}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"})
 
 	testCases := []struct {
 		eventNames     []Name
-		pattern        string
+		rule           Rule
 		targetID       TargetID
 		expectedResult RulesMap
 	}{
-		{[]Name{ObjectAccessedAll}, "", TargetID{"1", "webhook"}, rulesMapCase1},
-		{[]Name{ObjectAccessedAll, ObjectCreatedPut}, "", TargetID{"1", "webhook"}, rulesMapCase2},
-		{[]Name{ObjectRemovedDelete}, "2010*.jpg", TargetID{"1", "webhook"}, rulesMapCase3},
+		{[]Name{ObjectAccessedAll}, Rule{Pattern: ""}, TargetID{"1", "webhook"}, rulesMapCase1},
+		{[]Name{ObjectAccessedAll, ObjectCreatedPut}, Rule{Pattern: ""}, TargetID{"1", "webhook"}, rulesMapCase2},
+		{[]Name{ObjectRemovedDelete}, Rule{Pattern: "2010*.jpg"}, TargetID{"1", "webhook"}, rulesMapCase3},
 	}
 
 	for i, testCase := range testCases {
-		result := NewRulesMap(testCase.eventNames, testCase.pattern, testCase.targetID)
+		result := NewRulesMap(testCase.eventNames, testCase.rule, testCase.targetID)
 
 		if !reflect.DeepEqual(result, testCase.expectedResult) {
 			t.Errorf("test %v: result: expected: %v, got: %v", i+1, testCase.expectedResult, result)

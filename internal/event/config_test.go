@@ -61,6 +61,13 @@ func TestFilterRuleUnmarshalXML(t *testing.T) {
 		{[]byte(`<FilterRule><Name>ends</Name><Value>foo/bar</Value></FilterRule>`), nil, true},
 		{[]byte(`<FilterRule><Name>prefix</Name><Value>Hello/世界</Value></FilterRule>`), &FilterRule{"prefix", "Hello/世界"}, false},
 		{[]byte(`<FilterRule><Name>suffix</Name><Value>foo/bar</Value></FilterRule>`), &FilterRule{"suffix", "foo/bar"}, false},
+		{[]byte(`<FilterRule><Name>minObjectSize</Name><Value>1024</Value></FilterRule>`), &FilterRule{"minObjectSize", "1024"}, false},
+		{[]byte(`<FilterRule><Name>maxObjectSize</Name><Value>0</Value></FilterRule>`), &FilterRule{"maxObjectSize", "0"}, false},
+		{[]byte(`<FilterRule><Name>minObjectSize</Name><Value></Value></FilterRule>`), nil, true},
+		{[]byte(`<FilterRule><Name>minObjectSize</Name><Value>-1</Value></FilterRule>`), nil, true},
+		{[]byte(`<FilterRule><Name>minObjectSize</Name><Value>abc</Value></FilterRule>`), nil, true},
+		{[]byte(`<FilterRule><Name>maxObjectSize</Name><Value>1024.5</Value></FilterRule>`), nil, true},
+		{[]byte(`<FilterRule><Name>objectSize</Name><Value>1024</Value></FilterRule>`), nil, true},
 	}
 
 	for i, testCase := range testCases {
@@ -91,6 +98,21 @@ func TestFilterRuleListUnmarshalXML(t *testing.T) {
 		{[]byte(`<S3Key><FilterRule><Name>prefix</Name><Value>Hello/世界</Value></FilterRule></S3Key>`), &FilterRuleList{[]FilterRule{{"prefix", "Hello/世界"}}}, false},
 		{[]byte(`<S3Key><FilterRule><Name>suffix</Name><Value>foo/bar</Value></FilterRule></S3Key>`), &FilterRuleList{[]FilterRule{{"suffix", "foo/bar"}}}, false},
 		{[]byte(`<S3Key><FilterRule><Name>prefix</Name><Value>Hello/世界</Value></FilterRule><FilterRule><Name>suffix</Name><Value>foo/bar</Value></FilterRule></S3Key>`), &FilterRuleList{[]FilterRule{{"prefix", "Hello/世界"}, {"suffix", "foo/bar"}}}, false},
+		{[]byte(`<S3Key><FilterRule><Name>minObjectSize</Name><Value>1024</Value></FilterRule></S3Key>`), &FilterRuleList{[]FilterRule{{"minObjectSize", "1024"}}}, false},
+		{[]byte(`<S3Key><FilterRule><Name>maxObjectSize</Name><Value>2048</Value></FilterRule></S3Key>`), &FilterRuleList{[]FilterRule{{"maxObjectSize", "2048"}}}, false},
+		{[]byte(`<S3Key><FilterRule><Name>prefix</Name><Value>images/</Value></FilterRule><FilterRule><Name>suffix</Name><Value>jpg</Value></FilterRule><FilterRule><Name>minObjectSize</Name><Value>1024</Value></FilterRule><FilterRule><Name>maxObjectSize</Name><Value>2048</Value></FilterRule></S3Key>`),
+			&FilterRuleList{[]FilterRule{{"prefix", "images/"}, {"suffix", "jpg"}, {"minObjectSize", "1024"}, {"maxObjectSize", "2048"}}}, false},
+		// Inclusive equal bounds are valid.
+		{[]byte(`<S3Key><FilterRule><Name>minObjectSize</Name><Value>1024</Value></FilterRule><FilterRule><Name>maxObjectSize</Name><Value>1024</Value></FilterRule></S3Key>`),
+			&FilterRuleList{[]FilterRule{{"minObjectSize", "1024"}, {"maxObjectSize", "1024"}}}, false},
+		// Zero bounds are valid (zero byte objects compare as zero bytes).
+		{[]byte(`<S3Key><FilterRule><Name>minObjectSize</Name><Value>0</Value></FilterRule><FilterRule><Name>maxObjectSize</Name><Value>0</Value></FilterRule></S3Key>`),
+			&FilterRuleList{[]FilterRule{{"minObjectSize", "0"}, {"maxObjectSize", "0"}}}, false},
+		// Duplicate size filter rules are rejected.
+		{[]byte(`<S3Key><FilterRule><Name>minObjectSize</Name><Value>1024</Value></FilterRule><FilterRule><Name>minObjectSize</Name><Value>2048</Value></FilterRule></S3Key>`), nil, true},
+		{[]byte(`<S3Key><FilterRule><Name>maxObjectSize</Name><Value>1024</Value></FilterRule><FilterRule><Name>maxObjectSize</Name><Value>2048</Value></FilterRule></S3Key>`), nil, true},
+		// A minimum bound greater than the maximum bound is rejected.
+		{[]byte(`<S3Key><FilterRule><Name>minObjectSize</Name><Value>2049</Value></FilterRule><FilterRule><Name>maxObjectSize</Name><Value>2048</Value></FilterRule></S3Key>`), nil, true},
 	}
 
 	for i, testCase := range testCases {
@@ -126,6 +148,34 @@ func TestFilterRuleListPattern(t *testing.T) {
 
 		if result != testCase.expectedResult {
 			t.Fatalf("test %v: data: expected: %v, got: %v", i+1, testCase.expectedResult, result)
+		}
+	}
+}
+
+func TestFilterRuleListSizeBounds(t *testing.T) {
+	testCases := []struct {
+		filterRuleList   FilterRuleList
+		expectedMin      int64
+		expectedMax      int64
+		expectedHasMin   bool
+		expectedHasMax   bool
+	}{
+		{FilterRuleList{}, 0, 0, false, false},
+		{FilterRuleList{[]FilterRule{{"prefix", "images/"}}}, 0, 0, false, false},
+		{FilterRuleList{[]FilterRule{{"minObjectSize", "1024"}}}, 1024, 0, true, false},
+		{FilterRuleList{[]FilterRule{{"maxObjectSize", "2048"}}}, 0, 2048, false, true},
+		{FilterRuleList{[]FilterRule{{"minObjectSize", "0"}, {"maxObjectSize", "0"}}}, 0, 0, true, true},
+		{FilterRuleList{[]FilterRule{{"prefix", "images/"}, {"suffix", "jpg"}, {"minObjectSize", "1024"}, {"maxObjectSize", "2048"}}}, 1024, 2048, true, true},
+	}
+
+	for i, testCase := range testCases {
+		minSize, maxSize, hasMinSize, hasMaxSize := testCase.filterRuleList.SizeBounds()
+
+		if minSize != testCase.expectedMin || maxSize != testCase.expectedMax ||
+			hasMinSize != testCase.expectedHasMin || hasMaxSize != testCase.expectedHasMax {
+			t.Fatalf("test %v: result: expected: (%v,%v,%v,%v), got: (%v,%v,%v,%v)", i+1,
+				testCase.expectedMin, testCase.expectedMax, testCase.expectedHasMin, testCase.expectedHasMax,
+				minSize, maxSize, hasMinSize, hasMaxSize)
 		}
 	}
 }
@@ -377,8 +427,46 @@ func TestQueueToRulesMap(t *testing.T) {
 		panic(err)
 	}
 
-	rulesMapCase1 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedPut}, "images/*jpg", TargetID{"1", "webhook"})
+	data = []byte(`
+<QueueConfiguration>
+   <Id>1</Id>
+    <Filter>
+        <S3Key>
+            <FilterRule>
+                <Name>prefix</Name>
+                <Value>images/</Value>
+            </FilterRule>
+            <FilterRule>
+                <Name>suffix</Name>
+                <Value>jpg</Value>
+            </FilterRule>
+            <FilterRule>
+                <Name>minObjectSize</Name>
+                <Value>1024</Value>
+            </FilterRule>
+            <FilterRule>
+                <Name>maxObjectSize</Name>
+                <Value>2048</Value>
+            </FilterRule>
+        </S3Key>
+   </Filter>
+   <Queue>arn:minio:sqs:us-east-1:1:webhook</Queue>
+   <Event>s3:ObjectCreated:Put</Event>
+</QueueConfiguration>`)
+	queueCase3 := &Queue{}
+	if err := xml.Unmarshal(data, queueCase3); err != nil {
+		panic(err)
+	}
+
+	rulesMapCase1 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedPut}, Rule{Pattern: "images/*jpg"}, TargetID{"1", "webhook"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectCreatedPut}, Rule{
+		Pattern:       "images/*jpg",
+		MinObjectSize: 1024,
+		MaxObjectSize: 2048,
+		HasMinSize:    true,
+		HasMaxSize:    true,
+	}, TargetID{"1", "webhook"})
 
 	testCases := []struct {
 		queue          *Queue
@@ -386,6 +474,7 @@ func TestQueueToRulesMap(t *testing.T) {
 	}{
 		{queueCase1, rulesMapCase1},
 		{queueCase2, rulesMapCase2},
+		{queueCase3, rulesMapCase3},
 	}
 
 	for i, testCase := range testCases {
@@ -806,12 +895,12 @@ func TestConfigToRulesMap(t *testing.T) {
 		panic(err)
 	}
 
-	rulesMapCase1 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, "*", TargetID{"1", "webhook"})
+	rulesMapCase1 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
 
-	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedPut}, "images/*jpg", TargetID{"1", "webhook"})
+	rulesMapCase2 := NewRulesMap([]Name{ObjectCreatedPut}, Rule{Pattern: "images/*jpg"}, TargetID{"1", "webhook"})
 
-	rulesMapCase3 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, "*", TargetID{"1", "webhook"})
-	rulesMapCase3.add([]Name{ObjectCreatedPut}, "images/*jpg", TargetID{"2", "amqp"})
+	rulesMapCase3 := NewRulesMap([]Name{ObjectAccessedAll, ObjectCreatedAll, ObjectRemovedAll}, Rule{Pattern: "*"}, TargetID{"1", "webhook"})
+	rulesMapCase3.add([]Name{ObjectCreatedPut}, Rule{Pattern: "images/*jpg"}, TargetID{"2", "amqp"})
 
 	testCases := []struct {
 		config         *Config

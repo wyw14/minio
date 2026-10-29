@@ -801,7 +801,7 @@ func (s *peerRESTServer) ListenHandler(ctx context.Context, v *grid.URLValues, o
 		eventNames = append(eventNames, eventName)
 	}
 
-	rulesMap := event.NewRulesMap(eventNames, pattern, event.TargetID{ID: mustGetUUID()})
+	rulesMap := event.NewRulesMap(eventNames, event.Rule{Pattern: pattern}, event.TargetID{ID: mustGetUUID()})
 
 	// Listen Publisher uses nonblocking publish and hence does not wait for slow subscribers.
 	// Use buffered channel to take care of burst sends or slow w.Write()

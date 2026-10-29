@@ -451,6 +451,11 @@ const (
 
 	ErrIAMNotInitialized
 
+	// Bucket notification object size filter errors.
+	ErrFilterNameMinObjectSize
+	ErrFilterNameMaxObjectSize
+	ErrFilterObjectSizeRange
+
 	apiErrCodeEnd // This is used only for the testing code
 )
 
@@ -1145,6 +1150,21 @@ var errorCodes = errorCodeMap{
 	ErrFilterValueInvalid: {
 		Code:           "InvalidArgument",
 		Description:    "Size of filter rule value cannot exceed 1024 bytes in UTF-8 representation",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrFilterNameMinObjectSize: {
+		Code:           "InvalidArgument",
+		Description:    "Cannot specify more than one minObjectSize rule in a filter.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrFilterNameMaxObjectSize: {
+		Code:           "InvalidArgument",
+		Description:    "Cannot specify more than one maxObjectSize rule in a filter.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrFilterObjectSizeRange: {
+		Code:           "InvalidArgument",
+		Description:    "Filter rule minObjectSize must be less than or equal to maxObjectSize.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrOverlappingConfigs: {
@@ -2427,6 +2447,12 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrFilterNameSuffix
 	case *event.ErrInvalidFilterValue:
 		apiErr = ErrFilterValueInvalid
+	case *event.ErrFilterNameMinObjectSize:
+		apiErr = ErrFilterNameMinObjectSize
+	case *event.ErrFilterNameMaxObjectSize:
+		apiErr = ErrFilterNameMaxObjectSize
+	case *event.ErrInvalidObjectSizeRange:
+		apiErr = ErrFilterObjectSizeRange
 	case *event.ErrDuplicateEventName:
 		apiErr = ErrOverlappingConfigs
 	case *event.ErrDuplicateQueueConfiguration:

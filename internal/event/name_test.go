@@ -49,6 +49,37 @@ func TestNameExpand(t *testing.T) {
 	}
 }
 
+func TestNameHasObjectSize(t *testing.T) {
+	testCases := []struct {
+		name           Name
+		expectedResult bool
+	}{
+		{ObjectCreatedPut, true},
+		{ObjectCreatedCompleteMultipartUpload, true},
+		{ObjectCreatedCopy, true},
+		{ObjectAccessedGet, true},
+		{ObjectAccessedHead, true},
+		{ObjectReplicationComplete, true},
+		{ObjectRestoreCompleted, true},
+		{ObjectTransitionComplete, true},
+		{ObjectRemovedDelete, false},
+		{ObjectRemovedDeleteMarkerCreated, false},
+		{ObjectRemovedNoOP, false},
+		{ObjectRemovedDeleteAllVersions, false},
+		{ILMDelMarkerExpirationDelete, false},
+		{BucketCreated, false},
+		{BucketRemoved, false},
+	}
+
+	for i, testCase := range testCases {
+		result := testCase.name.HasObjectSize()
+
+		if result != testCase.expectedResult {
+			t.Errorf("test %v: result: expected: %v, got: %v", i+1, testCase.expectedResult, result)
+		}
+	}
+}
+
 func TestNameString(t *testing.T) {
 	var blankName Name
 

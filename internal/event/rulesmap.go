@@ -20,10 +20,11 @@ package event
 // RulesMap - map of rules for every event name.
 type RulesMap map[Name]Rules
 
-// add - adds event names, prefixes, suffixes and target ID to rules map.
-func (rulesMap RulesMap) add(eventNames []Name, pattern string, targetID TargetID) {
+// add - adds event names, prefixes, suffixes, object size filters and
+// target ID to rules map.
+func (rulesMap RulesMap) add(eventNames []Name, rule Rule, targetID TargetID) {
 	rules := make(Rules)
-	rules.Add(pattern, targetID)
+	rules.Add(rule, targetID)
 
 	for _, eventName := range eventNames {
 		for _, name := range eventName.Expand() {
@@ -66,19 +67,22 @@ func (rulesMap RulesMap) MatchSimple(eventName Name, objectName string) bool {
 	return rulesMap[eventName].MatchSimple(objectName)
 }
 
-// Match - returns TargetIDSet matching object name and event name in rules map.
-func (rulesMap RulesMap) Match(eventName Name, objectName string) TargetIDSet {
-	return rulesMap[eventName].Match(objectName)
+// Match - returns TargetIDSet matching object name, object size and event
+// name in rules map. A nil objectSize means the event does not carry a
+// confirmable object size; rules with size filters do not match in that
+// case while rules without size filters keep matching.
+func (rulesMap RulesMap) Match(eventName Name, objectName string, objectSize *int64) TargetIDSet {
+	return rulesMap[eventName].Match(objectName, objectSize)
 }
 
 // NewRulesMap - creates new rules map with given values.
-func NewRulesMap(eventNames []Name, pattern string, targetID TargetID) RulesMap {
+func NewRulesMap(eventNames []Name, rule Rule, targetID TargetID) RulesMap {
 	// If pattern is empty, add '*' wildcard to match all.
-	if pattern == "" {
-		pattern = "*"
+	if rule.Pattern == "" {
+		rule.Pattern = "*"
 	}
 
 	rulesMap := make(RulesMap)
-	rulesMap.add(eventNames, pattern, targetID)
+	rulesMap.add(eventNames, rule, targetID)
 	return rulesMap
 }

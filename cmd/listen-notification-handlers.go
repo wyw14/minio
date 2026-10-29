@@ -113,7 +113,7 @@ func (api objectAPIHandlers) ListenNotificationHandler(w http.ResponseWriter, r 
 		}
 	}
 
-	rulesMap := event.NewRulesMap(eventNames, pattern, event.TargetID{ID: mustGetUUID()})
+	rulesMap := event.NewRulesMap(eventNames, event.Rule{Pattern: pattern}, event.TargetID{ID: mustGetUUID()})
 
 	setEventStreamHeaders(w)
 

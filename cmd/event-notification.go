@@ -139,8 +139,18 @@ func (evnot *EventNotifier) RemoveAllBucketTargets() {
 
 // Send - sends the event to all registered notification targets
 func (evnot *EventNotifier) Send(args eventArgs) {
+	// Object size is only confirmable for events that carry object
+	// metadata (e.g. object creation). Removal and bucket level events
+	// match rules without a size filter but never rules that configure
+	// a minimum/maximum object size.
+	var objectSize *int64
+	if args.EventName.HasObjectSize() {
+		size := args.Object.Size
+		objectSize = &size
+	}
+
 	evnot.RLock()
-	targetIDSet := evnot.bucketRulesMap[args.BucketName].Match(args.EventName, args.Object.Name)
+	targetIDSet := evnot.bucketRulesMap[args.BucketName].Match(args.EventName, args.Object.Name, objectSize)
 	evnot.RUnlock()
 
 	if len(targetIDSet) == 0 {

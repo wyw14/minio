@@ -46,30 +46,77 @@ func NewPattern(prefix, suffix string) (pattern string) {
 	return pattern
 }
 
-// Rules - event rules
-type Rules map[string]TargetIDSet
+// Rule - represents an event notification matching rule made of an
+// object name wildcard pattern and an optional inclusive object size
+// range, specified in bytes.
+//
+// When HasMinSize and/or HasMaxSize are false the corresponding bound
+// does not apply. A zero byte object is still matched against the
+// configured bounds (MinObjectSize/MaxObjectSize may be zero).
+type Rule struct {
+	Pattern       string
+	MinObjectSize int64
+	MaxObjectSize int64
+	HasMinSize    bool
+	HasMaxSize    bool
+}
 
-// Add - adds pattern and target ID.
-func (rules Rules) Add(pattern string, targetID TargetID) {
-	rules[pattern] = NewTargetIDSet(targetID).Union(rules[pattern])
+// Match - returns true if the given object name and (optional) object
+// size satisfy this rule. When the rule carries a size filter but the
+// object size is not confirmable - objectSize is nil, e.g. for object
+// removal events - the rule does not match.
+func (rule Rule) Match(objectName string, objectSize *int64) bool {
+	if !wildcard.MatchSimple(rule.Pattern, objectName) {
+		return false
+	}
+
+	if !rule.HasMinSize && !rule.HasMaxSize {
+		return true
+	}
+
+	// A size filter is configured but the event does not carry a
+	// confirmable object size, so the rule cannot match.
+	if objectSize == nil {
+		return false
+	}
+
+	if rule.HasMinSize && *objectSize < rule.MinObjectSize {
+		return false
+	}
+
+	if rule.HasMaxSize && *objectSize > rule.MaxObjectSize {
+		return false
+	}
+
+	return true
+}
+
+// Rules - event rules
+type Rules map[Rule]TargetIDSet
+
+// Add - adds rule and target ID.
+func (rules Rules) Add(rule Rule, targetID TargetID) {
+	rules[rule] = NewTargetIDSet(targetID).Union(rules[rule])
 }
 
 // MatchSimple - returns true one of the matching object name in rules.
 func (rules Rules) MatchSimple(objectName string) bool {
-	for pattern := range rules {
-		if wildcard.MatchSimple(pattern, objectName) {
+	for rule := range rules {
+		if wildcard.MatchSimple(rule.Pattern, objectName) {
 			return true
 		}
 	}
 	return false
 }
 
-// Match - returns TargetIDSet matching object name in rules.
-func (rules Rules) Match(objectName string) TargetIDSet {
+// Match - returns TargetIDSet matching object name and size in rules.
+// A nil objectSize means the event does not carry a confirmable object
+// size; rules with size filters do not match in that case.
+func (rules Rules) Match(objectName string, objectSize *int64) TargetIDSet {
 	targetIDs := NewTargetIDSet()
 
-	for pattern, targetIDSet := range rules {
-		if wildcard.MatchSimple(pattern, objectName) {
+	for rule, targetIDSet := range rules {
+		if rule.Match(objectName, objectSize) {
 			targetIDs = targetIDs.Union(targetIDSet)
 		}
 	}
@@ -81,8 +128,8 @@ func (rules Rules) Match(objectName string) TargetIDSet {
 func (rules Rules) Clone() Rules {
 	rulesCopy := make(Rules)
 
-	for pattern, targetIDSet := range rules {
-		rulesCopy[pattern] = targetIDSet.Clone()
+	for rule, targetIDSet := range rules {
+		rulesCopy[rule] = targetIDSet.Clone()
 	}
 
 	return rulesCopy
@@ -92,8 +139,8 @@ func (rules Rules) Clone() Rules {
 func (rules Rules) Union(rules2 Rules) Rules {
 	nrules := rules.Clone()
 
-	for pattern, targetIDSet := range rules2 {
-		nrules[pattern] = nrules[pattern].Union(targetIDSet)
+	for rule, targetIDSet := range rules2 {
+		nrules[rule] = nrules[rule].Union(targetIDSet)
 	}
 
 	return nrules
@@ -103,9 +150,9 @@ func (rules Rules) Union(rules2 Rules) Rules {
 func (rules Rules) Difference(rules2 Rules) Rules {
 	nrules := make(Rules)
 
-	for pattern, targetIDSet := range rules {
-		if nv := targetIDSet.Difference(rules2[pattern]); len(nv) > 0 {
-			nrules[pattern] = nv
+	for rule, targetIDSet := range rules {
+		if nv := targetIDSet.Difference(rules2[rule]); len(nv) > 0 {
+			nrules[rule] = nv
 		}
 	}
 

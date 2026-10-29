@@ -22,10 +22,19 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/minio/minio-go/v7/pkg/set"
+)
+
+// Filter rule names supported inside <S3Key><FilterRule>.
+const (
+	filterNamePrefix        = "prefix"
+	filterNameSuffix        = "suffix"
+	filterNameMinObjectSize = "minObjectSize"
+	filterNameMaxObjectSize = "maxObjectSize"
 )
 
 // ValidateFilterRuleValue - checks if given value is filter rule value or not.
@@ -41,6 +50,17 @@ func ValidateFilterRuleValue(value string) error {
 	}
 
 	return &ErrInvalidFilterValue{value}
+}
+
+// parseObjectSizeFilterValue - parses an inclusive object size filter
+// value, specified as a non-negative number of bytes.
+func parseObjectSizeFilterValue(value string) (int64, error) {
+	size, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || size < 0 {
+		return 0, &ErrInvalidFilterValue{value}
+	}
+
+	return size, nil
 }
 
 // FilterRule - represents elements inside <FilterRule>...</FilterRule>
@@ -71,12 +91,17 @@ func (filter *FilterRule) UnmarshalXML(d *xml.Decoder, start xml.StartElement) e
 		return err
 	}
 
-	if rule.Name != "prefix" && rule.Name != "suffix" {
+	switch rule.Name {
+	case filterNamePrefix, filterNameSuffix:
+		if err := ValidateFilterRuleValue(rule.Value); err != nil {
+			return err
+		}
+	case filterNameMinObjectSize, filterNameMaxObjectSize:
+		if _, err := parseObjectSizeFilterValue(rule.Value); err != nil {
+			return err
+		}
+	default:
 		return &ErrInvalidFilterName{rule.Name}
-	}
-
-	if err := ValidateFilterRuleValue(filter.Value); err != nil {
-		return err
 	}
 
 	*filter = FilterRule(rule)
@@ -98,18 +123,38 @@ func (ruleList *FilterRuleList) UnmarshalXML(d *xml.Decoder, start xml.StartElem
 		return err
 	}
 
-	// FilterRuleList must have only one prefix and/or suffix.
+	// FilterRuleList must have only one prefix, suffix and/or object size filter.
 	nameSet := set.NewStringSet()
+	var minObjectSize, maxObjectSize int64
+	hasMinObjectSize, hasMaxObjectSize := false, false
 	for _, rule := range rules.Rules {
 		if nameSet.Contains(rule.Name) {
-			if rule.Name == "prefix" {
+			switch rule.Name {
+			case filterNamePrefix:
 				return &ErrFilterNamePrefix{}
+			case filterNameSuffix:
+				return &ErrFilterNameSuffix{}
+			case filterNameMinObjectSize:
+				return &ErrFilterNameMinObjectSize{}
+			case filterNameMaxObjectSize:
+				return &ErrFilterNameMaxObjectSize{}
 			}
-
-			return &ErrFilterNameSuffix{}
 		}
 
 		nameSet.Add(rule.Name)
+
+		switch rule.Name {
+		case filterNameMinObjectSize:
+			minObjectSize, _ = parseObjectSizeFilterValue(rule.Value)
+			hasMinObjectSize = true
+		case filterNameMaxObjectSize:
+			maxObjectSize, _ = parseObjectSizeFilterValue(rule.Value)
+			hasMaxObjectSize = true
+		}
+	}
+
+	if hasMinObjectSize && hasMaxObjectSize && minObjectSize > maxObjectSize {
+		return &ErrInvalidObjectSizeRange{minObjectSize, maxObjectSize}
 	}
 
 	*ruleList = FilterRuleList(rules)
@@ -127,14 +172,32 @@ func (ruleList FilterRuleList) Pattern() string {
 
 	for _, rule := range ruleList.Rules {
 		switch rule.Name {
-		case "prefix":
+		case filterNamePrefix:
 			prefix = rule.Value
-		case "suffix":
+		case filterNameSuffix:
 			suffix = rule.Value
 		}
 	}
 
 	return NewPattern(prefix, suffix)
+}
+
+// SizeBounds - returns the inclusive minimum and maximum object size
+// filters in bytes. The boolean values indicate whether each bound is
+// configured; both bounds are optional.
+func (ruleList FilterRuleList) SizeBounds() (minObjectSize, maxObjectSize int64, hasMinObjectSize, hasMaxObjectSize bool) {
+	for _, rule := range ruleList.Rules {
+		switch rule.Name {
+		case filterNameMinObjectSize:
+			minObjectSize, _ = parseObjectSizeFilterValue(rule.Value)
+			hasMinObjectSize = true
+		case filterNameMaxObjectSize:
+			maxObjectSize, _ = parseObjectSizeFilterValue(rule.Value)
+			hasMaxObjectSize = true
+		}
+	}
+
+	return minObjectSize, maxObjectSize, hasMinObjectSize, hasMaxObjectSize
 }
 
 // S3Key - represents elements inside <S3Key>...</S3Key>
@@ -220,7 +283,14 @@ func (q *Queue) SetRegion(region string) {
 // ToRulesMap - converts Queue to RulesMap
 func (q Queue) ToRulesMap() RulesMap {
 	pattern := q.Filter.RuleList.Pattern()
-	return NewRulesMap(q.Events, pattern, q.ARN.TargetID)
+	minObjectSize, maxObjectSize, hasMinObjectSize, hasMaxObjectSize := q.Filter.RuleList.SizeBounds()
+	return NewRulesMap(q.Events, Rule{
+		Pattern:       pattern,
+		MinObjectSize: minObjectSize,
+		MaxObjectSize: maxObjectSize,
+		HasMinSize:    hasMinObjectSize,
+		HasMaxSize:    hasMaxObjectSize,
+	}, q.ARN.TargetID)
 }
 
 // Unused.  Available for completion.

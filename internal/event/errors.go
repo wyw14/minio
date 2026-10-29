@@ -33,6 +33,12 @@ func IsEventError(err error) bool {
 		return true
 	case ErrInvalidFilterValue, *ErrInvalidFilterValue:
 		return true
+	case ErrFilterNameMinObjectSize, *ErrFilterNameMinObjectSize:
+		return true
+	case ErrFilterNameMaxObjectSize, *ErrFilterNameMaxObjectSize:
+		return true
+	case ErrInvalidObjectSizeRange, *ErrInvalidObjectSizeRange:
+		return true
 	case ErrDuplicateEventName, *ErrDuplicateEventName:
 		return true
 	case ErrUnsupportedConfiguration, *ErrUnsupportedConfiguration:
@@ -82,6 +88,30 @@ type ErrInvalidFilterValue struct {
 
 func (err ErrInvalidFilterValue) Error() string {
 	return fmt.Sprintf("invalid filter value '%v'", err.FilterValue)
+}
+
+// ErrFilterNameMinObjectSize - more than one minObjectSize usage error.
+type ErrFilterNameMinObjectSize struct{}
+
+func (err ErrFilterNameMinObjectSize) Error() string {
+	return "more than one minObjectSize in filter rule"
+}
+
+// ErrFilterNameMaxObjectSize - more than one maxObjectSize usage error.
+type ErrFilterNameMaxObjectSize struct{}
+
+func (err ErrFilterNameMaxObjectSize) Error() string {
+	return "more than one maxObjectSize in filter rule"
+}
+
+// ErrInvalidObjectSizeRange - min object size greater than max object size error.
+type ErrInvalidObjectSizeRange struct {
+	MinObjectSize int64
+	MaxObjectSize int64
+}
+
+func (err ErrInvalidObjectSizeRange) Error() string {
+	return fmt.Sprintf("min object size '%v' must not be greater than max object size '%v'", err.MinObjectSize, err.MaxObjectSize)
 }
 
 // ErrDuplicateEventName - duplicate event name error.
