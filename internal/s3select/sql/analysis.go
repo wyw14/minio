@@ -303,6 +303,15 @@ func (e *FuncExpr) analyze(s *Select) (result qProp) {
 		}
 		return result
 
+	case sqlFnRegexpCount:
+		if len(e.SFunc.ArgsList) != 2 {
+			return qProp{err: fmt.Errorf("%s needs exactly 2 arguments", string(funcName))}
+		}
+		for _, arg := range e.SFunc.ArgsList {
+			result.combine(arg.analyze(s))
+		}
+		return result
+
 	case sqlFnTrim:
 		if e.Trim.TrimChars != nil {
 			result.combine(e.Trim.TrimChars.analyze(s))

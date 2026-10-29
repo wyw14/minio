@@ -206,6 +206,10 @@ func TestFunctionParsing(t *testing.T) {
 		"trim(leading '12' from '  aab  ')",
 		"trim(trailing '12' from '  aab  ')",
 		"count(23)",
+
+		"regexp_count(s.title, 'e+')",
+		"REGEXP_COUNT('abc', 'a*')",
+		"regexp_count(LOWER(s.name), s.pattern)",
 	}
 	for i, tc := range validCases {
 		err := p.ParseString(tc, &fex)

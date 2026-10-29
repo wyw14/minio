@@ -19,6 +19,7 @@ package sql
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -176,6 +177,20 @@ const (
 	trimTrailing = "TRAILING"
 	trimBoth     = "BOTH"
 )
+
+// evalSQLRegexpCount returns the number of non-overlapping matches of
+// the RE2 regular expression pattern in text. The count, including for
+// zero-length matches and UTF-8 encoded text, is identical to
+// len(regexp.FindAllStringIndex(text, -1)), so empty matches never lead
+// to an infinite loop. It returns 0 when there is no match and an
+// error when pattern is not a valid RE2 regular expression.
+func evalSQLRegexpCount(text, pattern string) (int64, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(re.FindAllStringIndex(text, -1))), nil
+}
 
 func evalSQLTrim(where *string, trimChars, text string) (result string, err error) {
 	cutSet := " "

@@ -52,6 +52,7 @@ const (
 	sqlFnSubstring       FuncName = "SUBSTRING"
 	sqlFnTrim            FuncName = "TRIM"
 	sqlFnUpper           FuncName = "UPPER"
+	sqlFnRegexpCount     FuncName = "REGEXP_COUNT"
 )
 
 var (
@@ -133,6 +134,9 @@ func (e *FuncExpr) evalSQLFnNode(r Record, tableAlias string) (res *Value, err e
 
 	case sqlFnUpper:
 		return upperCase(argVals[0])
+
+	case sqlFnRegexpCount:
+		return regexpCount(argVals[0], argVals[1])
 
 	case sqlFnUTCNow:
 		return handleUTCNow()
@@ -217,6 +221,40 @@ func upperCase(v *Value) (*Value, error) {
 		return nil, errIncorrectSQLFunctionArgumentType(err)
 	}
 	return FromString(strings.ToUpper(s)), nil
+}
+
+// regexpCount implements the REGEXP_COUNT(text, pattern) scalar
+// function. It returns the number of non-overlapping matches of the
+// RE2 regular expression pattern in text, including empty matches,
+// with the same semantics as regexp.FindAllStringIndex(text, -1).
+//
+// A NULL or MISSING argument yields SQL NULL. Non-string arguments and
+// invalid regular expressions return a query error.
+func regexpCount(textV, patternV *Value) (*Value, error) {
+	// Returns NULL if either of the arguments is NULL or MISSING.
+	if textV.IsNull() || textV.IsMissing() || patternV.IsNull() || patternV.IsMissing() {
+		return FromNull(), nil
+	}
+
+	inferTypeAsString(textV)
+	text, ok := textV.ToString()
+	if !ok {
+		err := fmt.Errorf("%s expects a string as its first argument", sqlFnRegexpCount)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	inferTypeAsString(patternV)
+	pattern, ok := patternV.ToString()
+	if !ok {
+		err := fmt.Errorf("%s expects a string as its second argument", sqlFnRegexpCount)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	count, err := evalSQLRegexpCount(text, pattern)
+	if err != nil {
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+	return FromInt(count), nil
 }
 
 func handleDateAdd(r Record, d *DateAddFunc, tableAlias string) (*Value, error) {

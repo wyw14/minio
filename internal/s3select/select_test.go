@@ -587,6 +587,45 @@ func TestJSONQueries(t *testing.T) {
 {"request":{"uri":"/2","header":null}}`,
 		},
 		{
+			name:       "regexp-count-select",
+			query:      `SELECT REGEXP_COUNT(s.title, 'e') FROM s3object s WHERE s.id = 0`,
+			wantResult: `{"_1":2}`,
+		},
+		{
+			name:  "regexp-count-where",
+			query: `SELECT s.id FROM s3object s WHERE REGEXP_COUNT(s.desc, 'text') > 0`,
+			wantResult: `{"id":0}
+{"id":1}
+{"id":2}
+{"id":3}`,
+		},
+		{
+			name:       "regexp-count-where-no-match",
+			query:      `SELECT s.id FROM s3object s WHERE REGEXP_COUNT(s.desc, 'xyz') > 0`,
+			wantResult: ``,
+		},
+		{
+			name:       "regexp-count-nested-scalar",
+			query:      `SELECT REGEXP_COUNT(LOWER(s.title), 'e') FROM s3object s WHERE s.id = 1`,
+			wantResult: `{"_1":2}`,
+		},
+		{
+			name:       "regexp-count-missing-arg-is-null",
+			query:      `SELECT REGEXP_COUNT(s.absent, 'a') FROM s3object s WHERE s.id = 0`,
+			wantResult: `{"_1":null}`,
+		},
+		{
+			name:       "regexp-count-row-text",
+			query:      `SELECT s.id FROM s3object s WHERE REGEXP_COUNT(s.synonyms[0], 'o') = 2`,
+			wantResult: `{"id":0}`,
+		},
+		{
+			name:       "regexp-count-row-pattern",
+			query:      `SELECT REGEXP_COUNT(s.title, s.pattern) FROM s3object s`,
+			wantResult: `{"_1":2}`,
+			withJSON:   `{"title": "Test Record", "pattern": "e"}`,
+		},
+		{
 			name:  "is-missing-select",
 			query: `select s.request.header['User-Agent'] as h from s3object[*] as s`,
 			wantResult: `{"h":"test"}
@@ -901,6 +940,42 @@ func TestCSVQueries2(t *testing.T) {
 			input:      testInput,
 			query:      `select _2 from S3object WHERE _100 IS NOT NULL`,
 			wantResult: ``,
+		},
+		{
+			name:       "regexp-count-csv-select",
+			input:      testInput,
+			query:      `SELECT REGEXP_COUNT(s.text, 'a') AS c from s3object s WHERE id = 1`,
+			wantResult: `{"c":2}`,
+		},
+		{
+			name:       "regexp-count-csv-empty-field",
+			input:      testInput,
+			query:      `SELECT REGEXP_COUNT(s.text, 'a') from s3object s WHERE id = 2`,
+			wantResult: `{"_1":0}`,
+		},
+		{
+			name:       "regexp-count-csv-where",
+			input:      testInput,
+			query:      `SELECT s.id from s3object s WHERE REGEXP_COUNT(s.text, 'text') > 0`,
+			wantResult: `{"id":"1"}`,
+		},
+		{
+			name:       "regexp-count-csv-nested",
+			input:      testInput,
+			query:      `SELECT REGEXP_COUNT(LOWER(s.text), 'text') from s3object s WHERE id = 1`,
+			wantResult: `{"_1":1}`,
+		},
+		{
+			name:       "regexp-count-csv-missing-column-null",
+			input:      testInput,
+			query:      `SELECT REGEXP_COUNT(s._100, 'a') from s3object s WHERE id = 1`,
+			wantResult: `{"_1":null}`,
+		},
+		{
+			name:       "regexp-count-csv-empty-pattern",
+			input:      testInput,
+			query:      `SELECT REGEXP_COUNT(s.id, '') from s3object s WHERE id = 1`,
+			wantResult: `{"_1":2}`,
 		},
 		{
 			name: "select-is_not_string",
