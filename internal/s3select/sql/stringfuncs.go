@@ -26,6 +26,7 @@ var (
 	errMalformedEscapeSequence  = errors.New("Malformed escape sequence in LIKE clause")
 	errInvalidTrimArg           = errors.New("Trim argument is invalid - this should not happen")
 	errInvalidSubstringIndexLen = errors.New("Substring start index or length falls outside the string")
+	errSplitPartZeroField       = errors.New("Field position in SPLIT_PART must be non-zero")
 )
 
 const (
@@ -196,4 +197,41 @@ func evalSQLTrim(where *string, trimChars, text string) (result string, err erro
 	}
 
 	return trimFunc(text, cutSet), nil
+}
+
+// evalSQLSplitPart implements SPLIT_PART(text, delimiter, field_number).
+//
+// The text is split on every occurrence of the (possibly multi-byte or
+// multi-character) delimiter and the requested 1-based field is
+// returned. A negative field number counts from the last field. Empty
+// fields produced by leading, trailing or consecutive delimiters are
+// preserved. If the field number is outside the range of fields, an
+// empty string is returned. An empty delimiter does not split the text
+// at all - the whole text is the single field. Field number 0 is an
+// error (non-integer field numbers are rejected by the caller).
+func evalSQLSplitPart(text, delimiter string, field int) (res string, err error) {
+	if field == 0 {
+		return "", errSplitPartZeroField
+	}
+
+	var parts []string
+	if delimiter == "" {
+		// Empty delimiter: the whole text is the only field.
+		parts = []string{text}
+	} else {
+		// strings.Split matches the delimiter as a complete literal
+		// string and preserves empty fields.
+		parts = strings.Split(text, delimiter)
+	}
+
+	if field < 0 {
+		// -1 refers to the last field.
+		field = len(parts) + field + 1
+	}
+
+	if field < 1 || field > len(parts) {
+		return "", nil
+	}
+
+	return parts[field-1], nil
 }

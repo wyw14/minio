@@ -49,6 +49,7 @@ const (
 	sqlFnCharLength      FuncName = "CHAR_LENGTH"
 	sqlFnCharacterLength FuncName = "CHARACTER_LENGTH"
 	sqlFnLower           FuncName = "LOWER"
+	sqlFnSplitPart       FuncName = "SPLIT_PART"
 	sqlFnSubstring       FuncName = "SUBSTRING"
 	sqlFnTrim            FuncName = "TRIM"
 	sqlFnUpper           FuncName = "UPPER"
@@ -134,6 +135,9 @@ func (e *FuncExpr) evalSQLFnNode(r Record, tableAlias string) (res *Value, err e
 	case sqlFnUpper:
 		return upperCase(argVals[0])
 
+	case sqlFnSplitPart:
+		return splitPart(argVals[0], argVals[1], argVals[2])
+
 	case sqlFnUTCNow:
 		return handleUTCNow()
 
@@ -217,6 +221,49 @@ func upperCase(v *Value) (*Value, error) {
 		return nil, errIncorrectSQLFunctionArgumentType(err)
 	}
 	return FromString(strings.ToUpper(s)), nil
+}
+
+// splitPart implements the SPLIT_PART(text, delimiter, field_number)
+// function. A NULL or MISSING argument yields SQL NULL. Untyped
+// arguments (e.g. CSV fields) are inferred as strings for the first two
+// parameters and as a number for the field number; typed non-string
+// text/delimiter arguments (e.g. JSON numbers or booleans) are not
+// coerced into text and produce an error. The field number must be a
+// non-zero integer; zero or non-integer values produce an error.
+func splitPart(textV, delimiterV, fieldV *Value) (*Value, error) {
+	if textV.IsNull() || delimiterV.IsNull() || fieldV.IsNull() ||
+		textV.IsMissing() || delimiterV.IsMissing() || fieldV.IsMissing() {
+		return FromNull(), nil
+	}
+
+	inferTypeAsString(textV)
+	text, ok := textV.ToString()
+	if !ok {
+		err := fmt.Errorf("%s expects a string as its first argument", sqlFnSplitPart)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	inferTypeAsString(delimiterV)
+	delimiter, ok := delimiterV.ToString()
+	if !ok {
+		err := fmt.Errorf("%s expects a string as its second argument", sqlFnSplitPart)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	if err := inferTypeForArithOp(fieldV); err != nil {
+		return nil, err
+	}
+	field, ok := fieldV.ToInt()
+	if !ok {
+		err := fmt.Errorf("%s expects an integer as its third argument", sqlFnSplitPart)
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+
+	result, err := evalSQLSplitPart(text, delimiter, int(field))
+	if err != nil {
+		return nil, errIncorrectSQLFunctionArgumentType(err)
+	}
+	return FromString(result), nil
 }
 
 func handleDateAdd(r Record, d *DateAddFunc, tableAlias string) (*Value, error) {

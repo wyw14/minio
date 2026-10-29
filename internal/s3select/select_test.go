@@ -2012,3 +2012,250 @@ func TestParquetInputSchemaCSV(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitPartQueries(t *testing.T) {
+	const csvInput = "name,path,n\nalice,us/east/1,2\nbob,europe/west/2,1\ncarol,asia,5\n"
+	const jsonInput = `{"id":1,"path":"us/east/1","n":2}
+{"id":2,"path":null,"n":1}
+{"id":3,"path":"asia/pacific/3","n":5}`
+
+	const csvRequest = `<?xml version="1.0" encoding="UTF-8"?>
+<SelectObjectContentRequest>
+    <Expression>%s</Expression>
+    <ExpressionType>SQL</ExpressionType>
+    <InputSerialization>
+        <CompressionType>NONE</CompressionType>
+        <CSV>
+            <FileHeaderInfo>USE</FileHeaderInfo>
+	    <QuoteCharacter>"</QuoteCharacter>
+        </CSV>
+    </InputSerialization>
+    <OutputSerialization>
+        <JSON>
+        </JSON>
+    </OutputSerialization>
+    <RequestProgress>
+        <Enabled>FALSE</Enabled>
+    </RequestProgress>
+</SelectObjectContentRequest>`
+
+	const jsonRequest = `<?xml version="1.0" encoding="UTF-8"?>
+<SelectObjectContentRequest>
+    <Expression>%s</Expression>
+    <ExpressionType>SQL</ExpressionType>
+    <InputSerialization>
+        <CompressionType>NONE</CompressionType>
+        <JSON>
+            <Type>LINES</Type>
+        </JSON>
+    </InputSerialization>
+    <OutputSerialization>
+        <JSON>
+        </JSON>
+    </OutputSerialization>
+    <RequestProgress>
+        <Enabled>FALSE</Enabled>
+    </RequestProgress>
+</SelectObjectContentRequest>`
+
+	testTable := []struct {
+		name        string
+		format      string // "csv" or "json"
+		query       string
+		wantResult  string
+		wantOpenErr bool // rejected during query analysis
+		wantEvalErr bool // rejected while evaluating records
+	}{
+		// CSV: projection with per-record text and constant delimiter/field
+		{
+			name:       "csv-projection",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(s.path, '/', 1) AS r FROM s3object s`,
+			wantResult: "{\"r\":\"us\"}\n{\"r\":\"europe\"}\n{\"r\":\"asia\"}",
+		},
+		// CSV: filtering with a negative field number (counts from the end)
+		{
+			name:       "csv-filter-negative",
+			format:     "csv",
+			query:      `SELECT s.name AS name FROM s3object s WHERE SPLIT_PART(s.path, '/', -1) = '2'`,
+			wantResult: `{"name":"bob"}`,
+		},
+		// CSV: nested scalar expression
+		{
+			name:       "csv-nested-upper",
+			format:     "csv",
+			query:      `SELECT UPPER(SPLIT_PART(s.path, '/', 2)) AS seg FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"seg":"EAST"}`,
+		},
+		// CSV: SPLIT_PART result used as an argument to SPLIT_PART
+		{
+			name:       "csv-nested-splitpart",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(SPLIT_PART(s.path, '/', 2), 'a', 1) AS p FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"p":"e"}`,
+		},
+		// CSV: field number comes from a per-record (untyped) column,
+		// inferred as an integer - same semantics as a constant.
+		{
+			name:       "csv-record-field-number",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(s.path, '/', s.n) AS p FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"p":"east"}`,
+		},
+		// CSV: constant-only arguments
+		{
+			name:       "csv-constants",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART('x-y-z', '-', 2) AS p FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"p":"y"}`,
+		},
+		// CSV: out of range field returns an empty string
+		{
+			name:       "csv-out-of-range",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(s.path, '/', 4) AS p FROM s3object s WHERE s.name = 'carol'`,
+			wantResult: `{"p":""}`,
+		},
+		// CSV: a missing (out of range) column is NULL, so the result is NULL
+		{
+			name:       "csv-missing-column-null",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(s.path, '/', s._100) AS p FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"p":null}`,
+		},
+		// CSV: empty delimiter treats the whole text as the only field
+		{
+			name:       "csv-empty-delimiter",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART(s.path, '', 1) AS a, SPLIT_PART(s.path, '', 2) AS b FROM s3object s WHERE s.name = 'bob'`,
+			wantResult: `{"a":"europe/west/2","b":""}`,
+		},
+		// CSV: multi-character and Unicode delimiters
+		{
+			name:       "csv-multichar-unicode-delimiter",
+			format:     "csv",
+			query:      `SELECT SPLIT_PART('a::b::c', '::', 2) AS a, SPLIT_PART('a界b界c', '界', -1) AS b FROM s3object s WHERE s.name = 'alice'`,
+			wantResult: `{"a":"b","b":"c"}`,
+		},
+		// JSON: projection over rows including an explicit NULL
+		{
+			name:       "json-projection-null",
+			format:     "json",
+			query:      `SELECT SPLIT_PART(s.path, '/', 1) AS r FROM s3object s`,
+			wantResult: "{\"r\":\"us\"}\n{\"r\":null}\n{\"r\":\"asia\"}",
+		},
+		// JSON: a missing key behaves like NULL
+		{
+			name:       "json-missing-key-null",
+			format:     "json",
+			query:      `SELECT SPLIT_PART(s.path, '/', s.absent) AS p FROM s3object s WHERE s.id = 1`,
+			wantResult: `{"p":null}`,
+		},
+		// JSON: field number from a typed JSON integer
+		{
+			name:       "json-record-field-number",
+			format:     "json",
+			query:      `SELECT SPLIT_PART(s.path, '/', s.n) AS p FROM s3object s WHERE s.id = 1`,
+			wantResult: `{"p":"east"}`,
+		},
+		// JSON: filter with a negative field number; NULL rows do not match
+		{
+			name:       "json-filter",
+			format:     "json",
+			query:      `SELECT s.id AS id FROM s3object s WHERE SPLIT_PART(s.path, '/', -1) = '3'`,
+			wantResult: `{"id":3}`,
+		},
+		// Wrong number of arguments is rejected at query analysis time
+		{
+			name:        "csv-arity-too-few",
+			format:      "csv",
+			query:       `SELECT SPLIT_PART('a,b', ',') FROM s3object`,
+			wantOpenErr: true,
+		},
+		{
+			name:        "json-arity-too-many",
+			format:      "json",
+			query:       `SELECT SPLIT_PART('a,b', ',', 1, 2) FROM s3object`,
+			wantOpenErr: true,
+		},
+		// A typed JSON number used as text must not be coerced to a string
+		{
+			name:        "json-nonstring-text",
+			format:      "json",
+			query:       `SELECT SPLIT_PART(s.id, ',', 1) AS p FROM s3object s`,
+			wantEvalErr: true,
+		},
+		// Field number zero is an error even as a constant
+		{
+			name:        "json-zero-field",
+			format:      "json",
+			query:       `SELECT SPLIT_PART(s.path, '/', 0) AS p FROM s3object s`,
+			wantEvalErr: true,
+		},
+		// Non-integer field number is an error
+		{
+			name:        "json-fractional-field",
+			format:      "json",
+			query:       `SELECT SPLIT_PART(s.path, '/', 1.5) AS p FROM s3object s`,
+			wantEvalErr: true,
+		},
+	}
+
+	for _, testCase := range testTable {
+		t.Run(testCase.name, func(t *testing.T) {
+			requestTmpl, input := csvRequest, csvInput
+			if testCase.format == "json" {
+				requestTmpl, input = jsonRequest, jsonInput
+			}
+			testReq := fmt.Appendf(nil, requestTmpl, testCase.query)
+
+			s3Select, err := NewS3Select(bytes.NewReader(testReq))
+			if err != nil {
+				if testCase.wantOpenErr {
+					t.Logf("got expected analysis error: %v", err)
+					return
+				}
+				t.Fatal(err)
+			}
+
+			if err = s3Select.Open(newStringRSC(input)); err != nil {
+				if testCase.wantOpenErr {
+					t.Logf("got expected analysis error: %v", err)
+					return
+				}
+				t.Fatal(err)
+			}
+			if testCase.wantOpenErr {
+				t.Fatal("expected a query analysis error, got nil")
+			}
+
+			w := &testResponseWriter{}
+			s3Select.Evaluate(w)
+			s3Select.Close()
+			resp := http.Response{
+				StatusCode:    http.StatusOK,
+				Body:          io.NopCloser(bytes.NewReader(w.response)),
+				ContentLength: int64(len(w.response)),
+			}
+			res, err := minio.NewSelectResults(&resp, "testbucket")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := io.ReadAll(res)
+			if testCase.wantEvalErr {
+				if err == nil {
+					t.Errorf("expected an evaluation error, got result: %s", strings.TrimSpace(string(got)))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gotS := strings.TrimSpace(string(got))
+			if !reflect.DeepEqual(gotS, testCase.wantResult) {
+				t.Errorf("received response does not match with expected reply. Query: %s\ngot: %s\nwant:%s", testCase.query, gotS, testCase.wantResult)
+			}
+		})
+	}
+}
